@@ -17,6 +17,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   GameLogic? _logic;
   Timer? _timer;
   bool _isPaused = false;
+  bool _gameOverShown = false;
   Set<String> _mergingBalls = {};
   final AudioService _audio = AudioService();
   late AnimationController _comboController;
@@ -28,21 +29,26 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startGame());
-  }
 
-  void _startGame() {
-    final size = MediaQuery.of(context).size;
-    _logic = GameLogic(
-      gameWidth: size.width,
-      gameHeight: size.height,
-    );
-    _timer = Timer.periodic(const Duration(milliseconds: 16), _tick);
+    // Wait for first frame so MediaQuery returns real screen dimensions
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final size = MediaQuery.of(context).size;
+      setState(() {
+        _logic = GameLogic(
+          gameWidth: size.width,
+          gameHeight: size.height,
+        );
+      });
+      _timer = Timer.periodic(const Duration(milliseconds: 16), _tick);
+    });
   }
 
   void _tick(Timer t) {
-    if (_isPaused || _logic == null) return;
+    if (_logic == null || _isPaused || _gameOverShown) return;
+
     final merged = _logic!.update(0.016);
+
     if (merged.isNotEmpty) {
       setState(() => _mergingBalls.addAll(merged));
       _comboController.forward(from: 0);
@@ -50,22 +56,32 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         if (mounted) setState(() => _mergingBalls.clear());
       });
     }
+
     if (_logic!.isGameOver) {
+      _gameOverShown = true;
       _timer?.cancel();
-      _showGameOver();
+      _timer = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showGameOver());
       return;
     }
-    setState(() {});
+
+    if (mounted) setState(() {});
   }
 
   void _showGameOver() {
+    if (!mounted) return;
+    final score = _logic!.score;
+    final highScore = _logic!.highScore;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => GameOverScreen(
-          score: _logic!.score,
-          highScore: _logic!.highScore,
-          onRestart: () => Navigator.pushReplacementNamed(context, AppRoutes.game),
+          score: score,
+          highScore: highScore,
+          onRestart: () {
+            if (!mounted) return;
+            Navigator.pushReplacementNamed(context, AppRoutes.game);
+          },
         ),
       ),
     );
@@ -89,12 +105,18 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    if (_logic == null) return const SizedBox();
+    // Show spinner while logic initialises (first frame only)
+    if (_logic == null) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFE8F4FD),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       body: Stack(
         children: [
-          // Game background gradient
+          // Background gradient
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -124,16 +146,15 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             ),
           ),
 
-          // Ball canvas
+          // Ball canvas + gesture detection
           GestureDetector(
             onPanStart: (details) {
-              if (_logic == null || _isPaused) return;
+              if (_isPaused) return;
               final pos = details.localPosition;
               for (final ball in _logic!.balls.reversed) {
                 final dx = ball.x - pos.dx;
                 final dy = ball.y - pos.dy;
-                final dist = (dx * dx + dy * dy);
-                if (dist < ball.radius * ball.radius * 1.5) {
+                if ((dx * dx + dy * dy) < ball.radius * ball.radius * 1.5) {
                   _logic!.startDrag(ball.id);
                   break;
                 }
@@ -141,7 +162,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             },
             onPanUpdate: (details) {
               _logic?.updateDrag(
-                  details.localPosition.dx, details.localPosition.dy);
+                details.localPosition.dx,
+                details.localPosition.dy,
+              );
             },
             onPanEnd: (_) => _logic?.endDrag(),
             child: CustomPaint(
@@ -157,21 +180,17 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           SafeArea(
             child: Column(
               children: [
-                // Top HUD
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Score
                       _HudCard(
                         icon: Icons.stars_rounded,
                         label: 'Score',
                         value: _logic!.score.toString(),
                         color: AppColors.primary,
                       ),
-
-                      // Pause button
                       GestureDetector(
                         onTap: _togglePause,
                         child: Container(
@@ -188,14 +207,14 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                             ],
                           ),
                           child: Icon(
-                            _isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                            _isPaused
+                                ? Icons.play_arrow_rounded
+                                : Icons.pause_rounded,
                             color: AppColors.primary,
                             size: 26,
                           ),
                         ),
                       ),
-
-                      // High Score
                       _HudCard(
                         icon: Icons.emoji_events_rounded,
                         label: 'Best',
@@ -242,19 +261,20 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             ),
           ),
 
-          // Pause Overlay
-          if (_isPaused) _PauseOverlay(
-            onResume: _togglePause,
-            onRestart: () {
-              _timer?.cancel();
-              Navigator.pushReplacementNamed(context, AppRoutes.game);
-            },
-            onMenu: () {
-              _timer?.cancel();
-              Navigator.pushNamedAndRemoveUntil(
-                  context, AppRoutes.menu, (_) => false);
-            },
-          ),
+          // Pause overlay
+          if (_isPaused)
+            _PauseOverlay(
+              onResume: _togglePause,
+              onRestart: () {
+                _timer?.cancel();
+                Navigator.pushReplacementNamed(context, AppRoutes.game);
+              },
+              onMenu: () {
+                _timer?.cancel();
+                Navigator.pushNamedAndRemoveUntil(
+                    context, AppRoutes.menu, (_) => false);
+              },
+            ),
         ],
       ),
     );
@@ -292,23 +312,26 @@ class _HudCard extends StatelessWidget {
         ],
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 18),
           const SizedBox(width: 6),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 10,
-                      color: AppColors.textLight,
-                      fontWeight: FontWeight.w600)),
-              Text(value,
-                  style: TextStyle(
-                      fontSize: 18,
-                      color: color,
-                      fontWeight: FontWeight.w900)),
-            ],
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textLight,
+                        fontWeight: FontWeight.w600)),
+                Text(value,
+                    style: TextStyle(
+                        fontSize: 18,
+                        color: color,
+                        fontWeight: FontWeight.w900)),
+              ],
+            ),
           ),
         ],
       ),
@@ -331,43 +354,50 @@ class _BallPainter extends CustomPainter {
       final radius = isMerging ? ball.radius * 1.15 : ball.radius;
 
       // Shadow
-      final shadowPaint = Paint()
-        ..color = ball.color.withOpacity(0.3)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
-      canvas.drawCircle(Offset(ball.x, ball.y + 4), radius * 0.9, shadowPaint);
+      canvas.drawCircle(
+        Offset(ball.x, ball.y + 4),
+        radius * 0.9,
+        Paint()
+          ..color = ball.color.withOpacity(0.3)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+      );
 
-      // Main ball gradient
-      final ballPaint = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            Color.lerp(Colors.white, ball.color, 0.3)!,
-            ball.color,
-            Color.lerp(ball.color, Colors.black, 0.15)!,
-          ],
-          stops: const [0.0, 0.6, 1.0],
-          center: const Alignment(-0.35, -0.35),
-        ).createShader(Rect.fromCircle(
-            center: Offset(ball.x, ball.y), radius: radius));
+      // Main ball with radial gradient
+      canvas.drawCircle(
+        Offset(ball.x, ball.y),
+        radius,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              Color.lerp(Colors.white, ball.color, 0.3)!,
+              ball.color,
+              Color.lerp(ball.color, Colors.black, 0.15)!,
+            ],
+            stops: const [0.0, 0.6, 1.0],
+            center: const Alignment(-0.35, -0.35),
+          ).createShader(
+              Rect.fromCircle(center: Offset(ball.x, ball.y), radius: radius)),
+      );
 
-      canvas.drawCircle(Offset(ball.x, ball.y), radius, ballPaint);
-
-      // Shine highlight
-      final shinePaint = Paint()
-        ..color = Colors.white.withOpacity(0.55)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+      // Shine
       canvas.drawCircle(
         Offset(ball.x - radius * 0.32, ball.y - radius * 0.32),
         radius * 0.28,
-        shinePaint,
+        Paint()
+          ..color = Colors.white.withOpacity(0.55)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
       );
 
       // Merge pulse ring
       if (isMerging) {
-        final ringPaint = Paint()
-          ..color = ball.color.withOpacity(0.5)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3;
-        canvas.drawCircle(Offset(ball.x, ball.y), radius + 6, ringPaint);
+        canvas.drawCircle(
+          Offset(ball.x, ball.y),
+          radius + 6,
+          Paint()
+            ..color = ball.color.withOpacity(0.5)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 3,
+        );
       }
     }
   }
@@ -432,17 +462,15 @@ class _PauseOverlayState extends State<_PauseOverlay> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 24),
-
-              // Music toggle row
               GestureDetector(
                 onTap: () async {
                   await _audio.toggleMusic();
                   setState(() {});
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(14),
@@ -453,7 +481,9 @@ class _PauseOverlayState extends State<_PauseOverlay> {
                       Row(
                         children: [
                           Icon(
-                            _audio.isMusicOn ? Icons.music_note : Icons.music_off,
+                            _audio.isMusicOn
+                                ? Icons.music_note
+                                : Icons.music_off,
                             color: AppColors.primary,
                           ),
                           const SizedBox(width: 10),
@@ -475,9 +505,7 @@ class _PauseOverlayState extends State<_PauseOverlay> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
               GlassButton(
                 label: 'Resume',
                 icon: Icons.play_arrow_rounded,

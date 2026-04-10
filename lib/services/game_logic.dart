@@ -34,7 +34,10 @@ class Ball {
 }
 
 class GameLogic {
-  static const double dangerLineY = 80.0;
+  // Must be well below the HUD. Balls spawn at y = -radius (above screen),
+  // so they must never satisfy the game-over condition until fully on screen.
+  static const double dangerLineY = 160.0;
+
   static const double minBallRadius = 22.0;
   static const double maxBallRadius = 32.0;
 
@@ -44,8 +47,8 @@ class GameLogic {
   int highScore = 0;
   int comboCount = 0;
   int comboMultiplier = 1;
-  double spawnInterval = 2.0;
-  double ballSpeed = 60.0;
+  double spawnInterval = 2.5;
+  double ballSpeed = 80.0;
   double timeSinceLastSpawn = 0;
   double timeSinceLastCombo = 0;
   double difficultyTimer = 0;
@@ -56,17 +59,21 @@ class GameLogic {
   final double gameWidth;
   final double gameHeight;
 
-  GameLogic({required this.gameWidth, required this.gameHeight});
+  GameLogic({required this.gameWidth, required this.gameHeight}) {
+    // Pre-warm: first ball appears after ~0.3 s
+    timeSinceLastSpawn = spawnInterval - 0.3;
+  }
 
   void spawnBall() {
     final colorIndex = _random.nextInt(AppColors.ballColors.length);
-    final radius = minBallRadius + _random.nextDouble() * (maxBallRadius - minBallRadius);
+    final radius = minBallRadius +
+        _random.nextDouble() * (maxBallRadius - minBallRadius);
     final x = radius + _random.nextDouble() * (gameWidth - radius * 2);
 
     balls.add(Ball(
-      id: DateTime.now().millisecondsSinceEpoch.toString() + _random.nextInt(9999).toString(),
+      id: '${DateTime.now().millisecondsSinceEpoch}${_random.nextInt(9999)}',
       x: x,
-      y: -radius,
+      y: -radius, // spawns just above visible screen top
       radius: radius,
       color: AppColors.ballColors[colorIndex],
       colorIndex: colorIndex,
@@ -87,31 +94,30 @@ class GameLogic {
       comboMultiplier = 1;
     }
 
-    // Difficulty scaling every 30 seconds
+    // Difficulty ramp every 30 s
     if (difficultyTimer >= 30.0) {
       difficultyTimer = 0;
-      ballSpeed = min(ballSpeed + 15.0, 200.0);
-      spawnInterval = max(spawnInterval - 0.2, 0.6);
+      ballSpeed = min(ballSpeed + 10.0, 180.0);
+      spawnInterval = max(spawnInterval - 0.2, 0.8);
     }
 
-    // Spawn new balls
+    // Spawn new ball
     if (timeSinceLastSpawn >= spawnInterval) {
       timeSinceLastSpawn = 0;
       spawnBall();
     }
 
-    // Move balls
-    for (var ball in balls) {
+    // Move all non-dragged balls downward
+    for (final ball in balls) {
       if (ball.id != draggedBallId) {
         ball.y += ball.velocityY * dt;
-        // Clamp x
         ball.x = ball.x.clamp(ball.radius, gameWidth - ball.radius);
       }
     }
 
-    // Check merges
-    List<String> mergedIds = [];
-    List<Ball> toRemove = [];
+    // Merge detection
+    final List<String> mergedIds = [];
+    final List<Ball> toRemove = [];
 
     for (int i = 0; i < balls.length; i++) {
       for (int j = i + 1; j < balls.length; j++) {
@@ -119,7 +125,6 @@ class GameLogic {
         final b = balls[j];
         if (toRemove.contains(a) || toRemove.contains(b)) continue;
         if (a.colorIndex == b.colorIndex && a.collidesWith(b)) {
-          // Merge!
           toRemove.add(a);
           toRemove.add(b);
           mergedIds.add(a.id);
@@ -133,18 +138,18 @@ class GameLogic {
         }
       }
     }
+    balls.removeWhere(toRemove.contains);
 
-    balls.removeWhere((b) => toRemove.contains(b));
-
-    // Check game over - ball reaches danger line
-    for (var ball in balls) {
-      if (ball.y - ball.radius <= dangerLineY) {
+    // Game-over: only for balls that have entered the screen (y > 0)
+    // AND whose top edge has reached or passed the danger line
+    for (final ball in balls) {
+      if (ball.y > 0 && (ball.y - ball.radius) <= dangerLineY) {
         isGameOver = true;
         break;
       }
     }
 
-    // Remove balls that go below screen
+    // Cull balls below screen
     balls.removeWhere((b) => b.y - b.radius > gameHeight + 50);
 
     return mergedIds;
@@ -152,14 +157,17 @@ class GameLogic {
 
   void startDrag(String ballId) {
     draggedBallId = ballId;
-    draggedBall = balls.firstWhere((b) => b.id == ballId, orElse: () => balls.first);
+    draggedBall = balls.firstWhere(
+          (b) => b.id == ballId,
+      orElse: () => balls.first,
+    );
   }
 
   void updateDrag(double x, double y) {
-    if (draggedBall != null) {
-      draggedBall!.x = x.clamp(draggedBall!.radius, gameWidth - draggedBall!.radius);
-      draggedBall!.y = y;
-    }
+    if (draggedBall == null) return;
+    draggedBall!.x =
+        x.clamp(draggedBall!.radius, gameWidth - draggedBall!.radius);
+    draggedBall!.y = y;
   }
 
   void endDrag() {
@@ -172,9 +180,10 @@ class GameLogic {
     score = 0;
     comboCount = 0;
     comboMultiplier = 1;
-    spawnInterval = 2.0;
-    ballSpeed = 60.0;
-    timeSinceLastSpawn = 0;
+    spawnInterval = 2.5;
+    ballSpeed = 80.0;
+    timeSinceLastSpawn = spawnInterval - 0.3;
+    timeSinceLastCombo = 0;
     difficultyTimer = 0;
     isGameOver = false;
     draggedBall = null;
