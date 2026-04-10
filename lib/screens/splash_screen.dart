@@ -66,7 +66,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     width: 160,
                     height: 160,
                     child: Lottie.asset(
-                      'assets/lottie/bubble.json',
+                      'assets/Bubbles.json',
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) => Container(
                         width: 120,

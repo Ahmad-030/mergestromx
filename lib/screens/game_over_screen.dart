@@ -37,9 +37,12 @@ class GameOverScreen extends StatelessWidget {
                     'assets/confetti.json',
                     fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => Icon(
-                      isNewRecord ? Icons.emoji_events : Icons.sentiment_dissatisfied,
+                      isNewRecord
+                          ? Icons.emoji_events
+                          : Icons.sentiment_dissatisfied,
                       size: 80,
-                      color: isNewRecord ? AppColors.gold : AppColors.textMid,
+                      color:
+                      isNewRecord ? AppColors.gold : AppColors.textMid,
                     ),
                   ),
                 ).animate().scale(duration: 600.ms, curve: Curves.elasticOut),
@@ -50,7 +53,8 @@ class GameOverScreen extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w900,
-                    color: isNewRecord ? AppColors.gold : AppColors.textDark,
+                    color:
+                    isNewRecord ? AppColors.gold : AppColors.textDark,
                     letterSpacing: 1.0,
                   ),
                 ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.3, end: 0),
@@ -83,7 +87,8 @@ class GameOverScreen extends StatelessWidget {
                         large: true,
                       ),
                       const SizedBox(height: 8),
-                      Divider(color: AppColors.textLight.withOpacity(0.3)),
+                      Divider(
+                          color: AppColors.textLight.withOpacity(0.3)),
                       const SizedBox(height: 8),
                       _ScoreRow(
                         label: 'Best Score',
@@ -97,14 +102,16 @@ class GameOverScreen extends StatelessWidget {
 
                 const SizedBox(height: 32),
 
-                // Buttons
+                // Play Again — navigate directly; avoids stale-context issues
                 GlassButton(
                   label: 'Play Again',
                   icon: Icons.replay_rounded,
                   width: double.infinity,
                   height: 58,
                   fontSize: 18,
-                  onTap: onRestart,
+                  onTap: () {
+                    Navigator.pushReplacementNamed(context, AppRoutes.game);
+                  },
                 ).animate().fadeIn(delay: 450.ms).slideY(begin: 0.3, end: 0),
 
                 const SizedBox(height: 14),

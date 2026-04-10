@@ -56,11 +56,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       });
     }
 
-    if (_logic!.isGameOver) {
+    // Guard with !_gameOverShown so this only fires once.
+    // Future.delayed gives Flutter one clean frame before navigating — fixes freeze.
+    if (_logic!.isGameOver && !_gameOverShown) {
       _gameOverShown = true;
       _timer?.cancel();
       _timer = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showGameOver());
+      Future.delayed(const Duration(milliseconds: 350), _showGameOver);
       return;
     }
 
@@ -68,19 +70,21 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   void _showGameOver() {
+    // mounted check is critical — we are inside a Future.delayed
     if (!mounted) return;
+
     final score     = _logic!.score;
     final highScore = _logic!.highScore;
+
+    // GameOverScreen handles its own "Play Again" navigation internally,
+    // so onRestart is a no-op here — avoids the stale-context closure bug.
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => GameOverScreen(
           score: score,
           highScore: highScore,
-          onRestart: () {
-            if (!mounted) return;
-            Navigator.pushReplacementNamed(context, AppRoutes.game);
-          },
+          onRestart: () {},
         ),
       ),
     );
@@ -206,6 +210,12 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   ),
                 ),
 
+                // Timer bar
+                _TimerBar(
+                  timeRemaining: _logic!.timeRemaining,
+                  totalTime: GameLogic.totalTime,
+                ),
+
                 if (_logic!.comboMultiplier > 1)
                   AnimatedBuilder(
                     animation: _comboController,
@@ -319,6 +329,97 @@ class _HudCard extends StatelessWidget {
   }
 }
 
+// ── Timer Bar ─────────────────────────────────────────────────────────────────
+
+class _TimerBar extends StatelessWidget {
+  final double timeRemaining;
+  final double totalTime;
+
+  const _TimerBar({required this.timeRemaining, required this.totalTime});
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = (timeRemaining / totalTime).clamp(0.0, 1.0);
+    final isLow    = timeRemaining <= 15;
+
+    final barColor = isLow
+        ? Color.lerp(AppColors.danger, Colors.orange, progress)!
+        : Color.lerp(const Color(0xFF6C63FF), AppColors.primary, 1 - progress)!;
+
+    final int secs = timeRemaining.ceil();
+    final mm = (secs ~/ 60).toString().padLeft(2, '0');
+    final ss = (secs % 60).toString().padLeft(2, '0');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                Container(
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                FractionallySizedBox(
+                  widthFactor: progress,
+                  child: Container(
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: barColor,
+                      borderRadius: BorderRadius.circular(4),
+                      boxShadow: isLow
+                          ? [
+                        BoxShadow(
+                          color: AppColors.danger.withOpacity(0.4),
+                          blurRadius: 6,
+                        )
+                      ]
+                          : [],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: isLow
+                  ? AppColors.danger.withOpacity(0.12)
+                  : Colors.white.withOpacity(0.88),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.timer_rounded,
+                  size: 13,
+                  color: isLow ? AppColors.danger : AppColors.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '$mm:$ss',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: isLow ? AppColors.danger : AppColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Ball Painter ──────────────────────────────────────────────────────────────
 
 class _BallPainter extends CustomPainter {
@@ -336,7 +437,7 @@ class _BallPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Draw danger line (top — game over threshold)
+    // Danger line
     final dangerPaint = Paint()
       ..shader = LinearGradient(
         colors: [
@@ -348,7 +449,7 @@ class _BallPainter extends CustomPainter {
     canvas.drawRect(
         Rect.fromLTWH(0, dangerLineY, size.width, 2), dangerPaint);
 
-    // Draw floor line (bottom)
+    // Floor line
     final floorPaint = Paint()
       ..shader = LinearGradient(
         colors: [
@@ -359,7 +460,7 @@ class _BallPainter extends CustomPainter {
       ).createShader(Rect.fromLTWH(0, floorY, size.width, 3));
     canvas.drawRect(Rect.fromLTWH(0, floorY, size.width, 3), floorPaint);
 
-    // Draw balls
+    // Balls
     for (final ball in balls) {
       final isMerging = mergingIds.contains(ball.id);
       final radius    = isMerging ? ball.radius * 1.15 : ball.radius;

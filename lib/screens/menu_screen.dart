@@ -66,7 +66,7 @@ class _MenuScreenState extends State<MenuScreen> {
                     width: 110,
                     height: 110,
                     child: Lottie.asset(
-                      'assets/lottie/bubble.json',
+                      'assets/Bubbles.json',
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) => Container(
                         width: 90,

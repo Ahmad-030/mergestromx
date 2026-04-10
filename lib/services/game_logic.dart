@@ -42,10 +42,13 @@ class Ball {
 
 class GameLogic {
   static const double gravity  = 600.0;
-  static const double bounce   = 0.15;   // low → balls settle quickly
+  static const double bounce   = 0.15;
   static const double friction = 0.80;
   static const double minBallRadius = 20.0;
   static const double maxBallRadius = 30.0;
+
+  /// Total countdown in seconds. Change this to adjust game length.
+  static const double totalTime = 60.0;
 
   final Random _random = Random();
 
@@ -59,6 +62,11 @@ class GameLogic {
   double timeSinceLastCombo  = 0;
   double difficultyTimer     = 0;
   bool   isGameOver          = false;
+  bool   isTimeUp            = false;
+
+  /// Countdown timer — decrements every frame.
+  double timeRemaining = totalTime;
+
   String? draggedBallId;
 
   final double gameWidth;
@@ -67,7 +75,7 @@ class GameLogic {
   /// Visible floor — balls rest here.
   double get floorY => gameHeight - 60.0;
 
-  /// Danger line just below the HUD — game over when a *settled* ball reaches it.
+  /// Danger line just below the HUD — game over when a settled ball reaches it.
   double get dangerLineY => 180.0;
 
   GameLogic({required this.gameWidth, required this.gameHeight}) {
@@ -85,7 +93,7 @@ class GameLogic {
     balls.add(Ball(
       id: '${DateTime.now().millisecondsSinceEpoch}${_random.nextInt(9999)}',
       x: x,
-      y: -radius,          // just above screen top
+      y: -radius,
       radius: radius,
       color: AppColors.ballColors[colorIndex],
       colorIndex: colorIndex,
@@ -98,20 +106,29 @@ class GameLogic {
   List<String> update(double dt) {
     if (isGameOver) return [];
 
+    // ── Countdown timer ───────────────────────────────────────────────────
+    timeRemaining -= dt;
+    if (timeRemaining <= 0) {
+      timeRemaining = 0;
+      isTimeUp  = true;
+      isGameOver = true;
+      return [];
+    }
+
     timeSinceLastSpawn += dt;
     timeSinceLastCombo += dt;
     difficultyTimer    += dt;
 
     // Combo decay
     if (timeSinceLastCombo > 2.0) {
-      comboCount     = 0;
+      comboCount      = 0;
       comboMultiplier = 1;
     }
 
     // Difficulty ramp every 30 s
     if (difficultyTimer >= 30.0) {
-      difficultyTimer  = 0;
-      spawnInterval    = max(spawnInterval - 0.2, 0.8);
+      difficultyTimer = 0;
+      spawnInterval   = max(spawnInterval - 0.2, 0.8);
     }
 
     // Spawn
@@ -130,8 +147,8 @@ class GameLogic {
 
       // Floor
       if (ball.y + ball.radius >= floorY) {
-        ball.y          = floorY - ball.radius;
-        ball.velocityY  = -ball.velocityY * bounce;
+        ball.y         = floorY - ball.radius;
+        ball.velocityY = -ball.velocityY * bounce;
         ball.velocityX *= friction;
         if (ball.velocityY.abs() < 10) ball.velocityY = 0;
         if (ball.velocityX.abs() < 5)  ball.velocityX = 0;
@@ -163,7 +180,6 @@ class GameLogic {
           if (a.id != draggedBallId) { a.x -= nx * overlap; a.y -= ny * overlap; }
           if (b.id != draggedBallId) { b.x += nx * overlap; b.y += ny * overlap; }
 
-          // Simple velocity exchange
           if (a.id != draggedBallId && b.id != draggedBallId) {
             final relVel = (a.velocityX - b.velocityX) * nx +
                 (a.velocityY - b.velocityY) * ny;
@@ -200,7 +216,6 @@ class GameLogic {
           score             += 10 * comboMultiplier;
           if (score > highScore) highScore = score;
 
-          // Spawn upgraded merged ball at midpoint
           final nextIndex = min(a.colorIndex + 1, AppColors.ballColors.length - 1);
           final newRadius = min(a.radius * 1.2, maxBallRadius * 1.5);
           balls.add(Ball(
@@ -218,13 +233,12 @@ class GameLogic {
     }
     balls.removeWhere(toRemove.contains);
 
-    // ── Game-over check ──────────────────────────────────────────────────
-    // Only fires when a ball is SETTLED (slow-moving) AND its top edge
-    // has reached the danger line — meaning the pile stacked to the top.
+    // ── Game-over check (stack overflow) ─────────────────────────────────
+    // Only fires when a ball is SETTLED and its top edge reaches the danger line.
     for (final ball in balls) {
-      final settled = ball.velocityY.abs() < 20 && ball.velocityX.abs() < 20;
+      final settled        = ball.velocityY.abs() < 20 && ball.velocityX.abs() < 20;
       final aboveDangerLine = (ball.y - ball.radius) <= dangerLineY;
-      final onScreen = ball.y > 0;
+      final onScreen       = ball.y > 0;
       if (onScreen && settled && aboveDangerLine) {
         isGameOver = true;
         break;
@@ -274,6 +288,8 @@ class GameLogic {
     timeSinceLastCombo = 0;
     difficultyTimer    = 0;
     isGameOver         = false;
+    isTimeUp           = false;
+    timeRemaining      = totalTime;
     draggedBallId      = null;
   }
 }
