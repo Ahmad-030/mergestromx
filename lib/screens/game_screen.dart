@@ -30,7 +30,6 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 400),
     );
 
-    // Wait for first frame so MediaQuery returns real screen dimensions
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final size = MediaQuery.of(context).size;
@@ -70,7 +69,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   void _showGameOver() {
     if (!mounted) return;
-    final score = _logic!.score;
+    final score     = _logic!.score;
     final highScore = _logic!.highScore;
     Navigator.pushReplacement(
       context,
@@ -105,7 +104,6 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // Show spinner while logic initialises (first frame only)
     if (_logic == null) {
       return const Scaffold(
         backgroundColor: Color(0xFFE8F4FD),
@@ -127,26 +125,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             ),
           ),
 
-          // Danger line
-          Positioned(
-            top: GameLogic.dangerLineY,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: 2,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppColors.danger.withOpacity(0),
-                    AppColors.danger.withOpacity(0.7),
-                    AppColors.danger.withOpacity(0),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // Ball canvas + gesture detection
+          // Ball canvas
           GestureDetector(
             onPanStart: (details) {
               if (_isPaused) return;
@@ -154,7 +133,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               for (final ball in _logic!.balls.reversed) {
                 final dx = ball.x - pos.dx;
                 final dy = ball.y - pos.dy;
-                if ((dx * dx + dy * dy) < ball.radius * ball.radius * 1.5) {
+                if ((dx * dx + dy * dy) < ball.radius * ball.radius * 2.0) {
                   _logic!.startDrag(ball.id);
                   break;
                 }
@@ -171,6 +150,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               painter: _BallPainter(
                 balls: _logic!.balls,
                 mergingIds: _mergingBalls,
+                floorY: _logic!.floorY,
+                dangerLineY: _logic!.dangerLineY,
               ),
               size: Size.infinite,
             ),
@@ -225,7 +206,6 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   ),
                 ),
 
-                // Combo indicator
                 if (_logic!.comboMultiplier > 1)
                   AnimatedBuilder(
                     animation: _comboController,
@@ -339,30 +319,61 @@ class _HudCard extends StatelessWidget {
   }
 }
 
-// ── Ball Painter ───────────────────────────────────────────────────────────────
+// ── Ball Painter ──────────────────────────────────────────────────────────────
 
 class _BallPainter extends CustomPainter {
   final List<Ball> balls;
   final Set<String> mergingIds;
+  final double floorY;
+  final double dangerLineY;
 
-  _BallPainter({required this.balls, required this.mergingIds});
+  _BallPainter({
+    required this.balls,
+    required this.mergingIds,
+    required this.floorY,
+    required this.dangerLineY,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Draw danger line (top — game over threshold)
+    final dangerPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          Colors.red.withOpacity(0),
+          Colors.red.withOpacity(0.7),
+          Colors.red.withOpacity(0),
+        ],
+      ).createShader(Rect.fromLTWH(0, dangerLineY, size.width, 2));
+    canvas.drawRect(
+        Rect.fromLTWH(0, dangerLineY, size.width, 2), dangerPaint);
+
+    // Draw floor line (bottom)
+    final floorPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          Colors.blueGrey.withOpacity(0),
+          Colors.blueGrey.withOpacity(0.4),
+          Colors.blueGrey.withOpacity(0),
+        ],
+      ).createShader(Rect.fromLTWH(0, floorY, size.width, 3));
+    canvas.drawRect(Rect.fromLTWH(0, floorY, size.width, 3), floorPaint);
+
+    // Draw balls
     for (final ball in balls) {
       final isMerging = mergingIds.contains(ball.id);
-      final radius = isMerging ? ball.radius * 1.15 : ball.radius;
+      final radius    = isMerging ? ball.radius * 1.15 : ball.radius;
 
       // Shadow
       canvas.drawCircle(
         Offset(ball.x, ball.y + 4),
         radius * 0.9,
         Paint()
-          ..color = ball.color.withOpacity(0.3)
+          ..color      = ball.color.withOpacity(0.3)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
       );
 
-      // Main ball with radial gradient
+      // Main ball
       canvas.drawCircle(
         Offset(ball.x, ball.y),
         radius,
@@ -384,18 +395,18 @@ class _BallPainter extends CustomPainter {
         Offset(ball.x - radius * 0.32, ball.y - radius * 0.32),
         radius * 0.28,
         Paint()
-          ..color = Colors.white.withOpacity(0.55)
+          ..color      = Colors.white.withOpacity(0.55)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
       );
 
-      // Merge pulse ring
+      // Merge ring
       if (isMerging) {
         canvas.drawCircle(
           Offset(ball.x, ball.y),
           radius + 6,
           Paint()
-            ..color = ball.color.withOpacity(0.5)
-            ..style = PaintingStyle.stroke
+            ..color       = ball.color.withOpacity(0.5)
+            ..style       = PaintingStyle.stroke
             ..strokeWidth = 3,
         );
       }
@@ -432,17 +443,17 @@ class _PauseOverlayState extends State<_PauseOverlay> {
       color: Colors.black.withOpacity(0.45),
       child: Center(
         child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 40),
+          margin:  const EdgeInsets.symmetric(horizontal: 40),
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.95),
+            color:        Colors.white.withOpacity(0.95),
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.white, width: 1.5),
+            border:       Border.all(color: Colors.white, width: 1.5),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withOpacity(0.15),
+                color:      AppColors.primary.withOpacity(0.15),
                 blurRadius: 30,
-                offset: const Offset(0, 10),
+                offset:     const Offset(0, 10),
               ),
             ],
           ),
@@ -456,9 +467,9 @@ class _PauseOverlayState extends State<_PauseOverlay> {
                 child: const Text(
                   '⏸ Paused',
                   style: TextStyle(
-                    fontSize: 28,
+                    fontSize:   28,
                     fontWeight: FontWeight.w900,
-                    color: Colors.white,
+                    color:      Colors.white,
                   ),
                 ),
               ),
@@ -469,10 +480,10 @@ class _PauseOverlayState extends State<_PauseOverlay> {
                   setState(() {});
                 },
                 child: Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.08),
+                    color:        AppColors.primary.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
@@ -494,7 +505,7 @@ class _PauseOverlayState extends State<_PauseOverlay> {
                         ],
                       ),
                       Switch(
-                        value: _audio.isMusicOn,
+                        value:    _audio.isMusicOn,
                         onChanged: (_) async {
                           await _audio.toggleMusic();
                           setState(() {});
@@ -508,14 +519,14 @@ class _PauseOverlayState extends State<_PauseOverlay> {
               const SizedBox(height: 20),
               GlassButton(
                 label: 'Resume',
-                icon: Icons.play_arrow_rounded,
+                icon:  Icons.play_arrow_rounded,
                 width: double.infinity,
                 onTap: widget.onResume,
               ),
               const SizedBox(height: 10),
               GlassButton(
                 label: 'Restart',
-                icon: Icons.replay_rounded,
+                icon:  Icons.replay_rounded,
                 width: double.infinity,
                 color: AppColors.secondary,
                 onTap: widget.onRestart,
@@ -523,7 +534,7 @@ class _PauseOverlayState extends State<_PauseOverlay> {
               const SizedBox(height: 10),
               GlassButton(
                 label: 'Main Menu',
-                icon: Icons.home_rounded,
+                icon:  Icons.home_rounded,
                 width: double.infinity,
                 color: AppColors.danger,
                 onTap: widget.onMenu,
