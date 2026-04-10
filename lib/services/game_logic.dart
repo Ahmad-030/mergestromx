@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_theme.dart';
 
 class Ball {
@@ -50,6 +51,9 @@ class GameLogic {
   /// Total countdown in seconds. Change this to adjust game length.
   static const double totalTime = 60.0;
 
+  /// SharedPreferences key for best score.
+  static const String _kBestScore = 'best_score';
+
   final Random _random = Random();
 
   List<Ball> balls = [];
@@ -80,6 +84,21 @@ class GameLogic {
 
   GameLogic({required this.gameWidth, required this.gameHeight}) {
     timeSinceLastSpawn = spawnInterval - 0.5;
+    loadBestScore();
+  }
+
+  // ── Persistence ───────────────────────────────────────────────────────────
+
+  /// Loads the best score from SharedPreferences.
+  Future<void> loadBestScore() async {
+    final prefs = await SharedPreferences.getInstance();
+    highScore = prefs.getInt(_kBestScore) ?? 0;
+  }
+
+  /// Saves the current highScore to SharedPreferences.
+  Future<void> _saveBestScore() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kBestScore, highScore);
   }
 
   // ── Spawn ─────────────────────────────────────────────────────────────────
@@ -214,7 +233,12 @@ class GameLogic {
           timeSinceLastCombo = 0;
           comboMultiplier    = min(comboCount, 4);
           score             += 10 * comboMultiplier;
-          if (score > highScore) highScore = score;
+
+          // FIX: persist the new best score whenever it's beaten
+          if (score > highScore) {
+            highScore = score;
+            _saveBestScore();
+          }
 
           final nextIndex = min(a.colorIndex + 1, AppColors.ballColors.length - 1);
           final newRadius = min(a.radius * 1.2, maxBallRadius * 1.5);
@@ -291,5 +315,6 @@ class GameLogic {
     isTimeUp           = false;
     timeRemaining      = totalTime;
     draggedBallId      = null;
+    // NOTE: highScore is NOT reset here — it persists across sessions
   }
 }

@@ -103,23 +103,8 @@ class AboutScreen extends StatelessWidget {
                         ),
                       ).animate().fadeIn(delay: 200.ms),
 
-                      const SizedBox(height: 4),
 
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          'Version 1.0.0',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ).animate().fadeIn(delay: 300.ms),
+
 
                       const SizedBox(height: 28),
 
@@ -166,15 +151,11 @@ class AboutScreen extends StatelessWidget {
                             _DevRow(
                               icon: Icons.apartment,
                               label: 'Studio',
-                              value: 'BLIND LLC',
+                              value: 'BLIND LLC R45',
                               bold: true,
                             ),
-                            const SizedBox(height: 10),
-                            _DevRow(
-                              icon: Icons.tag,
-                              label: 'ID',
-                              value: 'R45',
-                            ),
+
+
                             const SizedBox(height: 10),
                             GestureDetector(
                               onTap: () {
@@ -194,7 +175,6 @@ class AboutScreen extends StatelessWidget {
                                 icon: Icons.email_rounded,
                                 label: 'Email',
                                 value: 'educationlimited4@gmail.com',
-                                tappable: true,
                               ),
                             ),
                           ],
@@ -349,7 +329,7 @@ class _DevRow extends StatelessWidget {
           child: Text(
             value,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 13,
               color: tappable ? AppColors.primary : AppColors.textDark,
               fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
               decoration: tappable ? TextDecoration.underline : null,

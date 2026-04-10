@@ -1,7 +1,7 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:lottie/lottie.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_theme.dart';
 import '../services/audio_service.dart';
 import '../widgets/floating_balls_bg.dart';
@@ -16,6 +16,23 @@ class MenuScreen extends StatefulWidget {
 
 class _MenuScreenState extends State<MenuScreen> {
   final AudioService _audio = AudioService();
+
+  // FIX: track best score in state
+  int _bestScore = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBestScore();
+  }
+
+  // FIX: called on first load AND every time the user returns from the game
+  Future<void> _loadBestScore() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _bestScore = prefs.getInt('best_score') ?? 0;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +78,6 @@ class _MenuScreenState extends State<MenuScreen> {
 
                   const SizedBox(height: 16),
 
-// WITH THIS:
                   SizedBox(
                     width: 110,
                     height: 110,
@@ -133,8 +149,9 @@ class _MenuScreenState extends State<MenuScreen> {
                               fontSize: 15,
                             ),
                           ),
+                          // FIX: show real best score instead of hardcoded '0'
                           Text(
-                            '0',
+                            '$_bestScore',
                             style: TextStyle(
                               color: AppColors.primary,
                               fontWeight: FontWeight.w900,
@@ -159,7 +176,9 @@ class _MenuScreenState extends State<MenuScreen> {
                           width: double.infinity,
                           height: 60,
                           fontSize: 19,
-                          onTap: () => Navigator.pushNamed(context, AppRoutes.game),
+                          // FIX: reload best score when player returns from game
+                          onTap: () => Navigator.pushNamed(context, AppRoutes.game)
+                              .then((_) => _loadBestScore()),
                         ).animate().fadeIn(delay: 500.ms).slideY(begin: 0.3, end: 0),
 
                         const SizedBox(height: 14),
@@ -189,15 +208,7 @@ class _MenuScreenState extends State<MenuScreen> {
                     ),
                   ),
 
-                  const Spacer(),
 
-                  Text(
-                    'v1.0.0',
-                    style: TextStyle(
-                      color: AppColors.textLight,
-                      fontSize: 12,
-                    ),
-                  ).animate().fadeIn(delay: 900.ms),
                   const SizedBox(height: 20),
                 ],
               ),

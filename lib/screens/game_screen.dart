@@ -582,7 +582,7 @@ class _PauseOverlayState extends State<_PauseOverlay> {
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
+                      horizontal: 5, vertical: 12),
                   decoration: BoxDecoration(
                     color:        AppColors.primary.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(14),
@@ -598,7 +598,7 @@ class _PauseOverlayState extends State<_PauseOverlay> {
                                 : Icons.music_off,
                             color: AppColors.primary,
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 0),
                           const Text('Background Music',
                               style: TextStyle(
                                   fontWeight: FontWeight.w600,
